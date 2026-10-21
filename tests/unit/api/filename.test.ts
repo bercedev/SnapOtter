@@ -80,6 +80,23 @@ describe("sanitizeFilename", () => {
     expect(sanitizeFilename("evil.webp.php.sh")).toBe("evil.webp");
   });
 
+  it("keeps a stem that repeats the file's extension (#3380)", () => {
+    expect(sanitizeFilename("my.png.photo.png")).toBe("my.png.photo.png");
+    expect(sanitizeFilename("my.png.photo-copy.png")).toBe("my.png.photo-copy.png");
+    expect(sanitizeFilename("logo.svg.backup.svg")).toBe("logo.svg.backup.svg");
+    expect(sanitizeFilename("clip.mp4.final.mp4")).toBe("clip.mp4.final.mp4");
+    expect(sanitizeFilename("report.csv.backup.CSV")).toBe("report.csv.backup.CSV");
+  });
+
+  it("still drops an unsafe tail after the last repeat", () => {
+    expect(sanitizeFilename("my.png.photo.png.php")).toBe("my.png.photo.png");
+  });
+
+  it("still truncates at the first safe extension when a different one follows", () => {
+    expect(sanitizeFilename("render.jxl.html")).toBe("render.jxl");
+    expect(sanitizeFilename("photo.png.backup.jpg")).toBe("photo.png");
+  });
+
   it("handles no extension", () => {
     expect(sanitizeFilename("README")).toBe("README");
   });

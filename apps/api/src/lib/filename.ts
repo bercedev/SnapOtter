@@ -82,7 +82,8 @@ const SAFE_EXTENSIONS = new Set([
  * 1. Strips directory separators (basename only).
  * 2. Removes ".." sequences and null bytes.
  * 3. Truncates after the first recognised file extension so that
- *    "report.csv.php" becomes "report.csv".
+ *    "report.csv.php" becomes "report.csv", or after its last repeat, so that
+ *    "my.png.photo.png" stays whole.
  */
 export function sanitizeFilename(raw: string): string {
   let name = basename(raw);
@@ -92,18 +93,17 @@ export function sanitizeFilename(raw: string): string {
     name = "upload";
   }
 
-  // Guard against double-extension attacks (e.g. "report.csv.php").
-  // Walk the dot-separated parts and truncate after the first safe extension.
+  // Guard against double-extension attacks (e.g. "report.csv.php"): keep the
+  // name up to the first safe extension, or up to its last repeat. A stem that
+  // repeats the file's own extension ("my.png.photo.png") is a name, not an
+  // attack (#3380); a different extension after it ("render.jxl.html") still is.
   const dotIndex = name.indexOf(".");
   if (dotIndex !== -1) {
     const parts = name.split(".");
-    for (let i = 1; i < parts.length; i++) {
-      const ext = `.${parts[i].toLowerCase()}`;
-      if (SAFE_EXTENSIONS.has(ext)) {
-        // Keep everything up to and including this extension, drop the rest
-        name = parts.slice(0, i + 1).join(".");
-        break;
-      }
+    const lower = parts.map((part) => part.toLowerCase());
+    const first = lower.findIndex((part, i) => i > 0 && SAFE_EXTENSIONS.has(`.${part}`));
+    if (first !== -1) {
+      name = parts.slice(0, lower.lastIndexOf(lower[first]) + 1).join(".");
     }
   }
 
