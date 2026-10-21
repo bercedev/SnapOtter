@@ -150,8 +150,10 @@ describe("Bulk Rename", () => {
     expect(filenames).toContain("backup-beach.jpg");
   });
 
-  it("strips only the trailing extension for {{original}} when stem contains the extension substring (#3034)", async () => {
+  it("strips only the trailing extension for {{original}} when stem contains the extension substring (#3034, #3380)", async () => {
     const { body, contentType } = createMultipartPayload([
+      { name: "file", filename: "my.png.photo.png", contentType: "image/png", content: PNG },
+      { name: "file", filename: "logo.svg.backup.svg", contentType: "image/svg+xml", content: SVG },
       { name: "file", filename: "my.png_photo.png", contentType: "image/png", content: PNG },
       { name: "file", filename: "logo.svg_backup.svg", contentType: "image/svg+xml", content: SVG },
       { name: "settings", content: JSON.stringify({ pattern: "{{original}}-copy" }) },
@@ -169,7 +171,12 @@ describe("Bulk Rename", () => {
 
     expect(res.statusCode).toBe(200);
     const filenames = zipEntryNames(res.rawPayload);
-    expect(filenames).toEqual(["logo.svg_backup-copy.svg", "my.png_photo-copy.png"]);
+    expect(filenames).toEqual([
+      "logo.svg.backup-copy.svg",
+      "logo.svg_backup-copy.svg",
+      "my.png.photo-copy.png",
+      "my.png_photo-copy.png",
+    ]);
   });
 
   it("respects custom startIndex", async () => {

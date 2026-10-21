@@ -163,7 +163,7 @@ describe("bulk-rename deduplicates colliding ZIP entry names (#3024)", () => {
     }
   });
 
-  it("strips only the trailing extension when {{original}} stem contains the extension substring (#3034)", async () => {
+  it("strips only the trailing extension when {{original}} stem contains the extension substring (#3034, #3380)", async () => {
     const app = await buildApp();
     try {
       const res = await app.inject({
@@ -171,6 +171,8 @@ describe("bulk-rename deduplicates colliding ZIP entry names (#3024)", () => {
         url: "/api/v1/tools/image/bulk-rename",
         ...multipartBody(
           [
+            { filename: "my.png.photo.png", contentType: "image/png", content: PNG },
+            { filename: "logo.svg.backup.svg", contentType: "image/svg+xml", content: TINY_PNG },
             { filename: "my.png_photo.png", contentType: "image/png", content: PNG },
             { filename: "logo.svg_backup.svg", contentType: "image/svg+xml", content: TINY_PNG },
             {
@@ -192,6 +194,8 @@ describe("bulk-rename deduplicates colliding ZIP entry names (#3024)", () => {
       const zip = new AdmZip(res.rawPayload);
       const entries = zip.getEntries();
       expect(entries.map((e) => e.entryName)).toEqual([
+        "my.png.photo-my.png.photo.png",
+        "logo.svg.backup-logo.svg.backup.svg",
         "my.png_photo-my.png_photo.png",
         "logo.svg_backup-logo.svg_backup.svg",
         "archive.bak.photo-archive.bak.photo.bak",
@@ -199,8 +203,10 @@ describe("bulk-rename deduplicates colliding ZIP entry names (#3024)", () => {
       ]);
       expect(entries[0].getData().equals(PNG)).toBe(true);
       expect(entries[1].getData().equals(TINY_PNG)).toBe(true);
-      expect(entries[2].getData().equals(JPG)).toBe(true);
-      expect(entries[3].getData().equals(PNG)).toBe(true);
+      expect(entries[2].getData().equals(PNG)).toBe(true);
+      expect(entries[3].getData().equals(TINY_PNG)).toBe(true);
+      expect(entries[4].getData().equals(JPG)).toBe(true);
+      expect(entries[5].getData().equals(PNG)).toBe(true);
     } finally {
       await app.close();
     }

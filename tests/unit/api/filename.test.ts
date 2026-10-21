@@ -86,10 +86,13 @@ describe("sanitizeFilename", () => {
     expect(sanitizeFilename("logo.svg.backup.svg")).toBe("logo.svg.backup.svg");
     expect(sanitizeFilename("clip.mp4.final.mp4")).toBe("clip.mp4.final.mp4");
     expect(sanitizeFilename("report.csv.backup.CSV")).toBe("report.csv.backup.CSV");
+    expect(sanitizeFilename("report.CSV.backup.csv")).toBe("report.CSV.backup.csv");
+    expect(sanitizeFilename(".png.backup.png")).toBe(".png.backup.png");
   });
 
   it("still drops an unsafe tail after the last repeat", () => {
     expect(sanitizeFilename("my.png.photo.png.php")).toBe("my.png.photo.png");
+    expect(sanitizeFilename(".png.php")).toBe(".png");
   });
 
   it("still truncates at the first safe extension when a different one follows", () => {
