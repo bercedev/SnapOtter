@@ -162,4 +162,47 @@ describe("bulk-rename deduplicates colliding ZIP entry names (#3024)", () => {
       await app.close();
     }
   });
+
+  it("strips only the trailing extension when {{original}} stem contains the extension substring (#3034)", async () => {
+    const app = await buildApp();
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/tools/image/bulk-rename",
+        ...multipartBody(
+          [
+            { filename: "my.png_photo.png", contentType: "image/png", content: PNG },
+            { filename: "logo.svg_backup.svg", contentType: "image/svg+xml", content: TINY_PNG },
+            {
+              filename: "archive.bak.photo.bak",
+              contentType: "application/octet-stream",
+              content: JPG,
+            },
+            {
+              filename: "price$$100$&.png",
+              contentType: "image/png",
+              content: PNG,
+            },
+          ],
+          { pattern: "{{original}}-{{original}}" },
+        ),
+      });
+
+      expect(res.statusCode).toBe(200);
+      const zip = new AdmZip(res.rawPayload);
+      const entries = zip.getEntries();
+      expect(entries.map((e) => e.entryName)).toEqual([
+        "my.png_photo-my.png_photo.png",
+        "logo.svg_backup-logo.svg_backup.svg",
+        "archive.bak.photo-archive.bak.photo.bak",
+        "price$$100$&-price$$100$&.png",
+      ]);
+      expect(entries[0].getData().equals(PNG)).toBe(true);
+      expect(entries[1].getData().equals(TINY_PNG)).toBe(true);
+      expect(entries[2].getData().equals(JPG)).toBe(true);
+      expect(entries[3].getData().equals(PNG)).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
 });

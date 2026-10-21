@@ -82,6 +82,7 @@ export function registerBulkRename(app: FastifyInstance) {
 
       for (let i = 0; i < files.length; i++) {
         const ext = extname(files[i].filename);
+        const stem = ext ? files[i].filename.slice(0, -ext.length) : files[i].filename;
         const index = settings.startIndex + i;
         const padded = String(index).padStart(
           String(files.length + settings.startIndex).length,
@@ -91,7 +92,7 @@ export function registerBulkRename(app: FastifyInstance) {
           settings.pattern
             .replace(/\{\{index\}\}/g, String(index))
             .replace(/\{\{padded\}\}/g, padded)
-            .replace(/\{\{original\}\}/g, files[i].filename.replace(ext, "")) + ext;
+            .replace(/\{\{original\}\}/g, () => stem) + ext;
 
         archive.append(files[i].buffer, { name: uniqueName(sanitizeFilename(newName)) });
       }

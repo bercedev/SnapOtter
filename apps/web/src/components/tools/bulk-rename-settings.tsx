@@ -99,14 +99,16 @@ export function BulkRenameSettings() {
   // Preview names
   const previewNames = hasFiles
     ? files.slice(0, 5).map((f, i) => {
-        const ext = f.name.includes(".") ? f.name.slice(f.name.lastIndexOf(".")) : "";
+        const dotIdx = f.name.lastIndexOf(".");
+        const ext = dotIdx > 0 ? f.name.slice(dotIdx) : "";
+        const stem = ext ? f.name.slice(0, -ext.length) : f.name;
         const idx = startIndex + i;
         const padded = String(idx).padStart(String(files.length + startIndex).length, "0");
         return (
           pattern
             .replace(/\{\{index\}\}/g, String(idx))
             .replace(/\{\{padded\}\}/g, padded)
-            .replace(/\{\{original\}\}/g, f.name.replace(ext, "")) + ext
+            .replace(/\{\{original\}\}/g, () => stem) + ext
         );
       })
     : [];
