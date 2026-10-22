@@ -171,13 +171,50 @@ def test_safe_onnx_session_falls_back_to_cpu_on_cuda_error(monkeypatch, capsys):
         monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
         monkeypatch.setattr(gpu, "onnx_providers", lambda: (list(cuda_providers), "cuda"))
 
-        session, device = gpu.safe_onnx_session("/tmp/model.onnx")
-        assert session == "cpu-session"
-        assert device == "cpu"
-        assert calls == [
-            ("/tmp/model.onnx", cuda_providers),
-            ("/tmp/model.onnx", ["CPUExecutionProvider"]),
-        ]
-        assert "falling back to CPU" in capsys.readouterr().err
+        for explicit_providers in (cuda_providers, None):
+            calls.clear()
+            session, device = gpu.safe_onnx_session("/tmp/model.onnx", providers=explicit_providers)
+            assert session == "cpu-session"
+            assert device == "cpu"
+            assert calls == [
+                ("/tmp/model.onnx", cuda_providers),
+                ("/tmp/model.onnx", ["CPUExecutionProvider"]),
+            ]
+            assert "falling back to CPU" in capsys.readouterr().err
 
 
+# --- safe_onnx_session() device ---------------------------------------------
+
+def _fake_onnxruntime(monkeypatch, used):
+    """Install an onnxruntime whose sessions run on the providers in ``used``."""
+    class FakeSession:
+        def __init__(self, _path, providers):
+            self.requested = providers
+
+        def get_providers(self):
+            return [p for p in self.requested if p in used]
+
+    fake = types.SimpleNamespace(InferenceSession=FakeSession)
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake)
+
+
+def test_safe_onnx_session_reports_cuda_for_explicit_cuda_providers(monkeypatch):
+    _fake_onnxruntime(monkeypatch, used={"CUDAExecutionProvider", "CPUExecutionProvider"})
+    providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    session, device = gpu.safe_onnx_session("model.onnx", providers=providers)
+    assert device == "cuda"
+    assert session.requested == providers
+
+
+def test_safe_onnx_session_reports_cpu_when_onnxruntime_drops_cuda(monkeypatch):
+    _fake_onnxruntime(monkeypatch, used={"CPUExecutionProvider"})
+    detected = (["CUDAExecutionProvider", "CPUExecutionProvider"], "cuda")
+    monkeypatch.setattr(gpu, "onnx_providers", lambda: detected)
+    _, device = gpu.safe_onnx_session("model.onnx")
+    assert device == "cpu"
+
+
+def test_safe_onnx_session_reports_cpu_for_cpu_providers(monkeypatch):
+    _fake_onnxruntime(monkeypatch, used={"CUDAExecutionProvider", "CPUExecutionProvider"})
+    _, device = gpu.safe_onnx_session("model.onnx", providers=["CPUExecutionProvider"])
+    assert device == "cpu"

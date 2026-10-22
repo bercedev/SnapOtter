@@ -307,33 +307,55 @@ for cuda_exc in (
     RuntimeError("CUBLAS_STATUS_ALLOC_FAILED"),
     RuntimeError("CUDA driver version is insufficient for CUDA runtime version"),
 ):
-    calls.clear()
-    active_err[0] = cuda_exc
-    gpu.onnx_providers = lambda: (list(cuda_providers), "cuda")
-    err_buf = io.StringIO()
-    saved_stderr = sys.stderr
-    sys.stderr = err_buf
-    try:
-        sess, dev = gpu.safe_onnx_session("/tmp/model.onnx")
-    finally:
-        sys.stderr = saved_stderr
-    assert sess == "session:/tmp/model.onnx:CPUExecutionProvider", sess
-    assert dev == "cpu", dev
-    assert calls == [
-        ("/tmp/model.onnx", cuda_providers),
-        ("/tmp/model.onnx", ["CPUExecutionProvider"]),
-    ], calls
-    info_event = json.loads(err_buf.getvalue().strip())
-    assert "CUDA init failed" in info_event["info"] and "falling back to CPU" in info_event["info"], info_event
+    for explicit_providers in (cuda_providers, None):
+        calls.clear()
+        active_err[0] = cuda_exc
+        gpu.onnx_providers = lambda: (list(cuda_providers), "cuda")
+        err_buf = io.StringIO()
+        saved_stderr = sys.stderr
+        sys.stderr = err_buf
+        try:
+            sess, dev = gpu.safe_onnx_session("/tmp/model.onnx", providers=explicit_providers)
+        finally:
+            sys.stderr = saved_stderr
+        assert sess == "session:/tmp/model.onnx:CPUExecutionProvider", sess
+        assert dev == "cpu", dev
+        assert calls == [
+            ("/tmp/model.onnx", cuda_providers),
+            ("/tmp/model.onnx", ["CPUExecutionProvider"]),
+        ], calls
+        info_event = json.loads(err_buf.getvalue().strip())
+        assert "CUDA init failed" in info_event["info"] and "falling back to CPU" in info_event["info"], info_event
 
-# 3. Successful CUDA init returns session and device without fallback.
-calls.clear()
-active_err[0] = None
-gpu.onnx_providers = lambda: (list(cuda_providers), "cuda")
-sess_ok, dev_ok = gpu.safe_onnx_session("/tmp/model.onnx")
-assert sess_ok == "session:/tmp/model.onnx:CUDAExecutionProvider", sess_ok
-assert dev_ok == "cuda", dev_ok
-assert calls == [("/tmp/model.onnx", cuda_providers)], calls
+# 3. Successful CUDA init returns session and device without fallback (default and explicit providers, #3611).
+for explicit_providers in (None, list(cuda_providers)):
+    calls.clear()
+    active_err[0] = None
+    if explicit_providers is None:
+        gpu.onnx_providers = lambda: (list(cuda_providers), "cuda")
+    else:
+        gpu.onnx_providers = lambda: (_ for _ in ()).throw(
+            AssertionError("onnx_providers() must not be called when providers is explicit")
+        )
+    sess_ok, dev_ok = gpu.safe_onnx_session("/tmp/model.onnx", providers=explicit_providers)
+    assert sess_ok == "session:/tmp/model.onnx:CUDAExecutionProvider", sess_ok
+    assert dev_ok == "cuda", (explicit_providers, dev_ok)
+    assert calls == [("/tmp/model.onnx", cuda_providers)], calls
+
+# 3b. When session exposes get_providers() and ONNX Runtime dropped CUDAExecutionProvider, device is "cpu" (#3611).
+class _DroppedCudaSession:
+    def get_providers(self):
+        return ["CPUExecutionProvider"]
+
+fake_ort.InferenceSession = lambda _path, providers=None: _DroppedCudaSession()
+_, dev_dropped = gpu.safe_onnx_session("/tmp/model.onnx", providers=list(cuda_providers))
+assert dev_dropped == "cpu", dev_dropped
+
+# 3c. Explicit CPU-only providers return device="cpu" (#3611).
+fake_ort.InferenceSession = fake_inference_session
+sess_cpu, dev_cpu = gpu.safe_onnx_session("/tmp/model.onnx", providers=["CPUExecutionProvider"])
+assert sess_cpu == "session:/tmp/model.onnx:CPUExecutionProvider", sess_cpu
+assert dev_cpu == "cpu", dev_cpu
 
 # 4. CPU-only providers re-raise any error without retrying.
 calls.clear()

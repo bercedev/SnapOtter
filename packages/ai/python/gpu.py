@@ -250,20 +250,25 @@ def onnx_providers():
 def safe_onnx_session(model_path, providers=None):
     """Create an ONNX Runtime InferenceSession with graceful CUDA EP fallback.
 
-    Returns (session, device) where device is "cuda" or "cpu".
+    Returns (session, device) where device is "cuda" or "cpu", read from the
+    providers the session actually runs on, so explicit providers report CUDA
+    too and a CUDA provider ONNX Runtime dropped reports CPU.
     """
     import onnxruntime as ort
 
-    device = "cpu"
     if providers is None:
-        providers, device = onnx_providers()
+        providers, _ = onnx_providers()
 
     try:
         session = ort.InferenceSession(model_path, providers=providers)
-        return session, device
     except Exception as e:
         if "CUDAExecutionProvider" in providers and not _is_host_oom(e):
             emit_info(f"CUDA init failed ({e}), falling back to CPU")
             session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
             return session, "cpu"
         raise
+
+    get_providers = getattr(session, "get_providers", None)
+    active_providers = get_providers() if callable(get_providers) else providers
+    device = "cuda" if "CUDAExecutionProvider" in active_providers else "cpu"
+    return session, device
